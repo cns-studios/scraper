@@ -197,7 +197,6 @@ class WebArchiveServer:
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
-            
             # Start monitoring task
             asyncio.create_task(self.monitor_scrape())
             

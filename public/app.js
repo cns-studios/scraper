@@ -184,14 +184,17 @@ async function checkScrapeStatus() {
                 const logText = status.log.join('');
                 document.getElementById('logContent').textContent = logText;
                 document.getElementById('scrapeLog').style.display = 'block';
+                for (const line of logText.split('\n')) {
+                    if (line.startsWith('#')) {
+                        const log_Text = line.slice(1)
+                        console.log(line)
+                        console.log(log_Text.split(';')[0]);
 
-                // Parse progress from log
-                const progressMatch = logText.match(/Progress: (\d+)\/(\d+) pages scraped, (\d+) assets downloaded/);
-                if (progressMatch) {
-                    const pagesScraped = parseInt(progressMatch[1], 10);
-                    const maxPages = parseInt(progressMatch[2], 10);
-                    const assetsDownloaded = parseInt(progressMatch[3], 10);
-                    updateProgress(pagesScraped, maxPages, assetsDownloaded);
+                        const pagesScraped = log_Text.split(';')[0];
+                        const maxPages = log_Text.split(';')[1];
+                        const assetsDownloaded = log_Text.split(';')[2];
+                        updateProgress(pagesScraped, maxPages, assetsDownloaded);
+                    }
                 }
             }
         } else {
