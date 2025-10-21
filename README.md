@@ -4,7 +4,7 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 
 ## Features
 
-### Scraper (Python)
+### Scraper
 
 - **Asynchronous Scraping**: High-performance crawling using `aiohttp` and `asyncio`.
 - **Configurable**: Control crawl depth, max pages, pages per domain, and more via a `.env` file.
@@ -13,7 +13,7 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 - **Optimization**: Optimizes images and minifies text-based assets before archiving.
 - **Compression**: Archives scraped sites into compressed `.tar.gz` files for efficient storage.
 
-### Viewer (Node.js)
+### Viewer
 
 - **Archive Browser**: A web interface to browse and view the contents of your web archives.
 - **Efficient Serving**: Serves content directly from the compressed archives, with a caching layer for performance.
@@ -23,13 +23,13 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 
 ## Tech Stack
 
-- **Scraper (Python)**:
+- **Scraper**:
   - `aiohttp`: Asynchronous HTTP client/server.
   - `beautifulsoup4`: For parsing HTML and XML.
   - `Pillow`: Image processing library.
   - `python-dotenv`: For managing environment variables.
 
-- **Viewer (Node.js)**:
+- **Viewer**:
   - `express`: Web framework for Node.js.
   - `express-handlebars`: View engine for Express.
   - `socket.io`: Real-time, bidirectional event-based communication.
@@ -63,8 +63,7 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 ### Prerequisites
 
 - Python 3.7+
-- Node.js v18+
-- `pip` and `npm`
+- `pip`
 
 ### Configuration
 
@@ -97,16 +96,25 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
     ```
 
 ### Installation
+0. **Python venv**:
+    ```bash
+    python -m venv .venv
 
-1.  **Python Dependencies**:
+1.  **Windows**:
+    ```bash
+    .venv/Scripts/activate
+    ```
+
+2. **MacOs/Linux**:
+    ```bash
+    source .venv/bin/activate
+    ```
+
+3.  **Python Dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
 
-2.  **Node.js Dependencies**:
-    ```bash
-    npm install
-    ```
 
 ## Usage
 
@@ -122,13 +130,13 @@ The script will use the configuration from your `.env` file, scrape the target w
 
 ### 2. Viewing Archives
 
-To start the web viewer, run `server.js`:
+To start the web viewer, run `server.py`:
 
 ```bash
-npm start
+python server.py
 ```
 
-You can then access the viewer in your browser at `http://localhost:3000` (or the host and port you configured).
+You can then access the viewer in your browser at `http://localhost:8080` (or the host and port you configured).
 
 ## Contributing
 
@@ -136,9 +144,9 @@ Contributions are welcome! Please feel free to submit a pull request.
 
 1.  Fork the repository.
 2.  Create your feature branch (`git checkout -b feature/AmazingFeature`).
-3.  Commit your changes (`git commit -m 'Add some AmazingFeature'`).
+3.  Commit your changes (`git commit -m 'feat: Add some AmazingFeature'`).
 4.  Push to the branch (`git push origin feature/AmazingFeature`).
-5.  Open a pull request.
+5.  Open a pull request <3
 
 ## License
 
