@@ -687,3 +687,30 @@ body {
     height: 100%;
     margin: 0;
 }
+
+.progress-container {
+    margin-top: 1.5rem;
+    width: 100%;
+    background: #e0e0e0;
+    border-radius: 8px;
+    overflow: hidden;
+    position: relative;
+    height: 30px;
+    border: 1px solid #ccc;
+}
+
+.progress-bar {
+    width: 0%;
+    height: 100%;
+    background: linear-gradient(90deg, #4caf50, #81c784);
+    transition: width 0.3s ease-in-out;
+}
+
+.progress-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    color: #333;
+    font-weight: 500;
+}

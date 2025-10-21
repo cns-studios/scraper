@@ -56,6 +56,7 @@ class WebScraper:
         # Page limit tracking
         self.pages_scraped_count = 0
         self.should_stop = False
+        self.stop_lock = asyncio.Lock()
         
         # User agents pool for rotation
         self.user_agents = [
@@ -444,21 +445,23 @@ class WebScraper:
     
     async def check_limits(self, url: str) -> bool:
         """Check if we should continue scraping based on limits"""
-        # Check global page limit
-        if self.pages_scraped_count >= self.max_pages:
-            logger.info(f"Reached maximum page limit: {self.max_pages}")
-            self.should_stop = True
-            return False
-            
-        # Check per-domain limit
-        domain = urlparse(url).netloc
-        domain_count = self.domain_counts.get(domain, 0)
-        
-        if domain_count >= self.pages_per_domain:
-            logger.warning(f"Reached limit for domain {domain}: {self.pages_per_domain} pages")
-            return False
-            
-        return True
+        async with self.stop_lock:
+            # Check global page limit
+            if self.pages_scraped_count >= self.max_pages:
+                if not self.should_stop:
+                    logger.info(f"Reached maximum page limit: {self.max_pages}")
+                    self.should_stop = True
+                return False
+
+            # Check per-domain limit
+            domain = urlparse(url).netloc
+            domain_count = self.domain_counts.get(domain, 0)
+
+            if domain_count >= self.pages_per_domain:
+                logger.warning(f"Reached limit for domain {domain}: {self.pages_per_domain} pages")
+                return False
+
+            return True
     
     async def apply_rate_limit(self, domain: str):
         """Apply rate limiting per domain"""
@@ -538,7 +541,11 @@ class WebScraper:
         content, content_type, cookies = result
         
         # Update counters
-        self.pages_scraped_count += 1
+        async with self.stop_lock:
+            self.pages_scraped_count += 1
+            if self.pages_scraped_count >= self.max_pages:
+                self.should_stop = True
+
         domain = urlparse(url).netloc
         self.domain_counts[domain] = self.domain_counts.get(domain, 0) + 1
         
@@ -569,8 +576,7 @@ class WebScraper:
         }
         
         # Log progress
-        if self.pages_scraped_count % 10 == 0:
-            logger.info(f"Progress: {self.pages_scraped_count}/{self.max_pages} pages scraped, {len(self.asset_map)} assets downloaded")
+        logger.info(f"Progress: {self.pages_scraped_count}/{self.max_pages} pages scraped, {len(self.asset_map)} assets downloaded")
         
         # Extract and queue new URLs if HTML
         if 'html' in content_type and not self.should_stop:
@@ -637,15 +643,24 @@ class WebScraper:
                     for _ in range(self.max_workers)
                 ]
                 
-                # Wait for queue to be processed or limit reached
-                while not self.queue.empty() and not self.should_stop:
-                    await asyncio.sleep(0.5)
+                # Monitoring task to check for completion
+                async def monitor():
+                    while not self.should_stop:
+                        await asyncio.sleep(0.5)
+
+                    # Once stop is signaled, empty the queue
+                    while not self.queue.empty():
+                        self.queue.get_nowait()
+                        self.queue.task_done()
+
+                monitor_task = asyncio.create_task(monitor())
                 
-                # Wait for remaining tasks
+                # Wait for all initial tasks to complete
                 await self.queue.join()
+                self.should_stop = True # Ensure stop is signaled
                 
-                # Signal stop and cancel workers
-                self.should_stop = True
+                # Cancel monitor and workers
+                monitor_task.cancel()
                 for worker in workers:
                     worker.cancel()
                 

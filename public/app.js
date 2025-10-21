@@ -138,8 +138,10 @@ async function startScrape() {
         
         if (result.status === 'started') {
             document.getElementById('stopButton').style.display = 'inline-flex';
+            document.getElementById('progressContainer').style.display = 'block';
             document.getElementById('scrapeLog').style.display = 'block';
-            
+            updateProgress(0, document.getElementById('maxPages').value, 0);
+
             // Start monitoring
             scrapeStatusInterval = setInterval(checkScrapeStatus, 2000);
         } else if (result.error) {
@@ -179,13 +181,24 @@ async function checkScrapeStatus() {
             document.getElementById('stopButton').style.display = 'inline-flex';
             
             if (status.log && status.log.length > 0) {
-                document.getElementById('logContent').textContent = status.log.join('');
+                const logText = status.log.join('');
+                document.getElementById('logContent').textContent = logText;
                 document.getElementById('scrapeLog').style.display = 'block';
+
+                // Parse progress from log
+                const progressMatch = logText.match(/Progress: (\d+)\/(\d+) pages scraped, (\d+) assets downloaded/);
+                if (progressMatch) {
+                    const pagesScraped = parseInt(progressMatch[1], 10);
+                    const maxPages = parseInt(progressMatch[2], 10);
+                    const assetsDownloaded = parseInt(progressMatch[3], 10);
+                    updateProgress(pagesScraped, maxPages, assetsDownloaded);
+                }
             }
         } else {
             statusEl.innerHTML = '<span class="status-idle">Ready</span>';
             document.getElementById('stopButton').style.display = 'none';
-            
+            document.getElementById('progressContainer').style.display = 'none';
+
             if (scrapeStatusInterval) {
                 clearInterval(scrapeStatusInterval);
                 scrapeStatusInterval = null;
@@ -194,6 +207,14 @@ async function checkScrapeStatus() {
     } catch (error) {
         console.error('Error checking status:', error);
     }
+}
+
+function updateProgress(pagesScraped, maxPages, assetsDownloaded) {
+    const percentage = maxPages > 0 ? (pagesScraped / maxPages) * 100 : 0;
+
+    document.getElementById('progressBar').style.width = `${percentage}%`;
+    document.getElementById('progressText').textContent =
+        `Pages: ${pagesScraped}/${maxPages} | Assets: ${assetsDownloaded}`;
 }
 
 // Page preview functionality

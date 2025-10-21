@@ -174,8 +174,17 @@ class WebCompressor:
                 archive_name = f"web_archive_{timestamp}.tar.gz"
                 archive_path = os.path.join(self.archive_dir, archive_name)
                 
+                # Use a function to add to tar to handle symlinks
+                def add_to_tar_recursive(tar, path):
+                    for item in os.listdir(path):
+                        full_path = os.path.join(path, item)
+                        if os.path.islink(full_path):
+                            logger.warning(f"Skipping symlink: {full_path}")
+                            continue
+                        tar.add(full_path, arcname=os.path.relpath(full_path, optimized_dir))
+
                 with tarfile.open(archive_path, "w:gz", compresslevel=9) as tar:
-                    tar.add(optimized_dir, arcname=".")
+                    add_to_tar_recursive(tar, optimized_dir)
                 
                 logger.info(f"Archive created with Python tarfile: {archive_path}")
                 return archive_path

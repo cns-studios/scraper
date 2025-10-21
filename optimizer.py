@@ -28,15 +28,16 @@ class ContentOptimizer:
             content = re.sub(r'<!--.*?-->', '', content, flags=re.DOTALL)
             
             # Minify
-            minified = htmlmin.minify(content, 
+            minified = htmlmin.minify(content,
                 remove_comments=True,
                 remove_empty_space=True,
-                remove_all_empty_space=False,
+                remove_all_empty_space=True,
                 reduce_boolean_attributes=True,
-                remove_optional_attribute_quotes=False)
-            
-            async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
-                await f.write(minified)
+                remove_optional_attribute_quotes=True)
+
+            if minified:
+                async with aiofiles.open(filepath, 'w', encoding='utf-8') as f:
+                    await f.write(minified)
             
             return len(content) - len(minified)
             

@@ -2,6 +2,7 @@
 # server.py
 
 import os
+import re
 import json
 import asyncio
 import logging
@@ -47,8 +48,15 @@ class WebArchiveServer:
         self.app.router.add_post('/api/scrape/stop', self.stop_scrape)
         self.app.router.add_get('/api/scrape/config', self.get_scrape_config)
         
+        # Add a route for the root URL to serve index.html
+        self.app.router.add_get('/', self.serve_index)
+
         # Static files
-        self.app.router.add_static('/', path='public', name='static', show_index=True)
+        self.app.router.add_static('/', path='public', name='static')
+
+    async def serve_index(self, request):
+        """Serve the index.html file."""
+        return web.FileResponse('public/index.html')
         
     async def global_search(self, request):
         """Search across all runs"""
@@ -97,12 +105,21 @@ class WebArchiveServer:
         """Preview page as rendered HTML"""
         run_id = request.match_info['run_id']
         page_hash = request.match_info['page_hash']
-        
+
+        # Sanitize inputs to prevent path traversal
+        if not re.match(r'^[a-zA-Z0-9_]+$', run_id) or not re.match(r'^[a-zA-Z0-9]+$', page_hash):
+            return web.Response(text="Invalid request parameters", status=400)
+
         run_dir = self.scraped_data_dir / run_id
         
         # Try to find the HTML file
         for ext in ['.html', '.htm', '.txt']:
             html_file = run_dir / 'html' / f"{page_hash}{ext}"
+
+            # Security check to ensure the path is within the data directory
+            if not html_file.resolve().is_relative_to(self.scraped_data_dir.resolve()):
+                return web.Response(text="Forbidden", status=403)
+
             if html_file.exists():
                 async with aiofiles.open(html_file, 'r', encoding='utf-8') as f:
                     content = await f.read()
