@@ -1,40 +1,39 @@
 # Web Archiver & Viewer
 
-This project is a comprehensive solution for scraping, archiving, and viewing websites. It consists of two main components: a powerful Python-based web scraper and a modern Node.js server for viewing the archives.
+This project is a comprehensive solution for scraping, archiving, and viewing websites. It consists of a powerful Python-based web scraper and a modern web interface for viewing the archives.
 
 ## Features
 
 ### Scraper
 
 - **Asynchronous Scraping**: High-performance crawling using `aiohttp` and `asyncio`.
-- **Configurable**: Control crawl depth, max pages, pages per domain, and more via a `.env` file.
+- **Configurable**: Control crawl depth, max pages, pages per domain, and more via the web interface or a `.env` file.
 - **Polite**: Respects `robots.txt` and has configurable request delays.
 - **Asset Handling**: Scrapes HTML, CSS, JavaScript, and images.
 - **Optimization**: Optimizes images and minifies text-based assets before archiving.
-- **Compression**: Archives scraped sites into compressed `.tar.gz` files for efficient storage.
+- **Compression**: Archives scraped sites into compressed `.tar.zst` or `.tar.gz` files for efficient storage.
 
 ### Viewer
 
-- **Archive Browser**: A web interface to browse and view the contents of your web archives.
-- **Efficient Serving**: Serves content directly from the compressed archives, with a caching layer for performance.
-- **Real-time Updates**: Uses Socket.IO for real-time communication.
-- **Modern Stack**: Built with Express, Handlebars, and other modern libraries.
-- **Security**: Includes security best practices using Helmet and CORS.
+- **Web-Based Interface**: A modern, single-page application for managing and viewing web archives.
+- **Archive Browser**: Browse and view the contents of your web archives.
+- **Real-time Progress**: A real-time progress bar shows the status of active scraping jobs.
+- **Global Search**: Search for content across all of your archives.
+- **Efficient Serving**: Serves content directly from the scraped data directories.
+- **Security**: Includes security best practices to prevent common vulnerabilities.
 
 ## Tech Stack
 
-- **Scraper**:
+- **Backend**:
   - `aiohttp`: Asynchronous HTTP client/server.
   - `beautifulsoup4`: For parsing HTML and XML.
   - `Pillow`: Image processing library.
   - `python-dotenv`: For managing environment variables.
+  - `htmlmin`, `csscompressor`, `jsmin`: For minifying assets.
 
-- **Viewer**:
-  - `express`: Web framework for Node.js.
-  - `express-handlebars`: View engine for Express.
-  - `socket.io`: Real-time, bidirectional event-based communication.
-  - `tar`: For reading TAR archives.
-  - `helmet`: Helps secure Express apps by setting various HTTP headers.
+- **Frontend**:
+  - Vanilla JavaScript, HTML, and CSS.
+  - No frameworks, keeping it simple and fast.
 
 ## Project Structure
 
@@ -45,24 +44,21 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 ├───scraper.py          # Core web scraping logic
 ├───compressor.py       # Compresses scraped files into an archive
 ├───optimizer.py        # Optimizes assets (images, CSS, JS)
+├───server.py           # Main entry point for the web viewer server
 ├───requirements.txt    # Python dependencies
-├───server.js           # Main entry point for the Node.js viewer server
-├───package.json        # Node.js dependencies
-├───src/                # Node.js server source code
-│   ├───app.js          # Express application setup
-│   ├───controllers/    # Request handlers
-│   ├───routes/         # API and viewer routes
-│   ├───services/       # Business logic for the viewer
-│   └───utils/          # Utility functions
 ├───public/             # Static assets for the viewer frontend
-└───views/              # Handlebars templates for the viewer
+│   ├───index.html      # Main HTML file for the web interface
+│   ├───app.js          # JavaScript for the web interface
+│   └───styles.css      # CSS for the web interface
+├───scraped_data/       # Directory to save scraped data
+└───archives/           # Directory to save compressed archives
 ```
 
 ## Setup and Installation
 
 ### Prerequisites
 
-- Python 3.7+
+- Python 3.8+
 - `pip`
 
 ### Configuration
@@ -84,33 +80,34 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
     # --- Optimizer & Compressor Configuration ---
     IMAGE_QUALITY=85                 # Image quality for optimization (1-100)
     MAX_IMAGE_WIDTH=1920             # Maximum width for resized images
-    COMPRESSION_LEVEL=19             # Brotli compression level for the final archive
+    COMPRESSION_LEVEL=19             # Zstandard compression level for the final archive
 
     # --- Directory Configuration ---
     OUTPUT_DIR="./scraped_data"      # Directory to save scraped data
     ARCHIVE_DIR="./archives"         # Directory to save compressed archives
 
     # --- Server Configuration ---
-    PORT=3000                        # Port for the Node.js viewer server
-    HOST="localhost"                 # Host for the Node.js server
+    PORT=8080                        # Port for the web viewer server
     ```
 
 ### Installation
-0. **Python venv**:
+
+1.  **Create a virtual environment**:
     ```bash
     python -m venv .venv
-
-1.  **Windows**:
-    ```bash
-    .venv/Scripts/activate
     ```
 
-2. **MacOs/Linux**:
-    ```bash
-    source .venv/bin/activate
-    ```
+2.  **Activate the virtual environment**:
+    - **Windows**:
+      ```bash
+      .venv\Scripts\activate
+      ```
+    - **macOS/Linux**:
+      ```bash
+      source .venv/bin/activate
+      ```
 
-3.  **Python Dependencies**:
+3.  **Install Python dependencies**:
     ```bash
     pip install -r requirements.txt
     ```
@@ -118,17 +115,7 @@ This project is a comprehensive solution for scraping, archiving, and viewing we
 
 ## Usage
 
-### 1. Scraping and Archiving
-
-To start the web scraping and archiving process, run `main.py`:
-
-```bash
-python main.py
-```
-
-The script will use the configuration from your `.env` file, scrape the target website, and create a compressed archive in the `archives` directory.
-
-### 2. Viewing Archives
+### 1. Starting the Web Viewer
 
 To start the web viewer, run `server.py`:
 
@@ -136,7 +123,19 @@ To start the web viewer, run `server.py`:
 python server.py
 ```
 
-You can then access the viewer in your browser at `http://localhost:8080` (or the host and port you configured).
+You can then access the viewer in your browser at `http://localhost:8080`.
+
+### 2. Scraping and Archiving
+
+You can start a new scraping job from the web interface. Navigate to the "New Scrape" tab, configure the scraping parameters, and click "Start Scraping". The progress bar will show the status of the scraping job in real-time.
+
+Alternatively, you can run the scraper from the command line:
+
+```bash
+python main.py
+```
+
+The script will use the configuration from your `.env` file, scrape the target website, and create a compressed archive in the `archives` directory.
 
 ## Contributing
 
@@ -146,8 +145,8 @@ Contributions are welcome! Please feel free to submit a pull request.
 2.  Create your feature branch (`git checkout -b feature/AmazingFeature`).
 3.  Commit your changes (`git commit -m 'feat: Add some AmazingFeature'`).
 4.  Push to the branch (`git push origin feature/AmazingFeature`).
-5.  Open a pull request <3
+5.  Open a pull request.
 
 ## License
 
-This project is licensed under the MIT License. See the `LICENSE` file for details.
+This project is licensed under the MIT License.
