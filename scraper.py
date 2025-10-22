@@ -149,115 +149,122 @@ class WebScraper:
         return f"{subdir}/{url_hash}{ext}"
     
     async def download_asset(self, session: aiohttp.ClientSession, url: str, asset_type: str, referer: str = None) -> Optional[str]:
-        """Download an asset and return its local path"""
-        try:
-            # Skip if already downloaded or failed before
-            if url in self.asset_map:
-                return self.asset_map[url]
-            
-            if url in self.failed_assets:
-                return None
-            
-            # Clean URL (remove fragments)
-            clean_url = url.split('#')[0]
-            
-            # Apply rate limiting
-            domain = urlparse(clean_url).netloc
-            await self.apply_rate_limit(domain)
-            
-            # Get appropriate headers
-            headers = self.get_headers(referer=referer, is_asset=True)
-            
-            # Add cookies if we have them for this domain
-            cookies = self.domain_cookies.get(domain, {})
-            
-            async with self.semaphore:
-                try:
-                    async with session.get(
-                        clean_url, 
-                        timeout=30, 
-                        ssl=False,
-                        headers=headers,
-                        cookies=cookies,
-                        allow_redirects=True
-                    ) as response:
-                        
-                        # Handle different response codes
-                        if response.status == 200:
-                            content = await response.read()
-                            
-                            # Generate local path
-                            local_path = self.get_asset_local_path(clean_url, asset_type)
-                            full_path = f"{self.output_dir}/{local_path}"
-                            
-                            # Save asset
-                            os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                            
-                            if asset_type in ['css', 'js']:
-                                # Text assets
-                                try:
-                                    text_content = content.decode('utf-8', errors='ignore')
-                                    async with aiofiles.open(full_path, 'w', encoding='utf-8') as f:
-                                        await f.write(text_content)
-                                except:
-                                    # If decode fails, save as binary
-                                    async with aiofiles.open(full_path, 'wb') as f:
-                                        await f.write(content)
-                            else:
-                                # Binary assets
-                                async with aiofiles.open(full_path, 'wb') as f:
-                                    await f.write(content)
-                            
-                            # Store mapping
-                            self.asset_map[url] = local_path
-                            logger.debug(f"Downloaded asset: {url} -> {local_path}")
-                            
-                            return local_path
-                            
-                        elif response.status == 403:
-                            # Try alternative approach for 403
-                            logger.debug(f"403 for asset {url}, trying with different headers")
-                            
-                            # Try with minimal headers
-                            minimal_headers = {
-                                'User-Agent': headers['User-Agent']
-                            }
-                            
-                            async with session.get(
-                                clean_url,
-                                timeout=30,
-                                ssl=False,
-                                headers=minimal_headers
-                            ) as retry_response:
-                                if retry_response.status == 200:
-                                    content = await retry_response.read()
-                                    local_path = self.get_asset_local_path(clean_url, asset_type)
-                                    full_path = f"{self.output_dir}/{local_path}"
-                                    
-                                    os.makedirs(os.path.dirname(full_path), exist_ok=True)
-                                    async with aiofiles.open(full_path, 'wb') as f:
-                                        await f.write(content)
-                                    
-                                    self.asset_map[url] = local_path
-                                    return local_path
-                                else:
-                                    logger.warning(f"Failed to download asset {url}: HTTP {retry_response.status}")
-                                    self.failed_assets.add(url)
-                                    return None
-                        else:
-                            logger.warning(f"Failed to download asset {url}: HTTP {response.status}")
-                            self.failed_assets.add(url)
-                            return None
-                            
-                except asyncio.TimeoutError:
-                    logger.warning(f"Timeout downloading asset {url}")
-                    self.failed_assets.add(url)
+        with open('web_archiver.log', 'a') as log_file:
+            """Download an asset and return its local path"""
+            try:
+                # Skip if already downloaded or failed before
+                if url in self.asset_map:
+                    return self.asset_map[url]
+                
+                if url in self.failed_assets:
                     return None
-                    
-        except Exception as e:
-            logger.error(f"Error downloading asset {url}: {e}")
-            self.failed_assets.add(url)
-            return None
+                
+                # Clean URL (remove fragments)
+                clean_url = url.split('#')[0]
+                
+                # Apply rate limiting
+                domain = urlparse(clean_url).netloc
+                await self.apply_rate_limit(domain)
+                
+                # Get appropriate headers
+                headers = self.get_headers(referer=referer, is_asset=True)
+                
+                # Add cookies if we have them for this domain
+                cookies = self.domain_cookies.get(domain, {})
+                
+                async with self.semaphore:
+                    try:
+                        async with session.get(
+                            clean_url, 
+                            timeout=30, 
+                            ssl=False,
+                            headers=headers,
+                            cookies=cookies,
+                            allow_redirects=True
+                        ) as response:
+                            
+                            # Handle different response codes
+                            if response.status == 200:
+                                content = await response.read()
+                                
+                                # Generate local path
+                                local_path = self.get_asset_local_path(clean_url, asset_type)
+                                full_path = f"{self.output_dir}/{local_path}"
+                                
+                                # Save asset
+                                os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                                
+                                if asset_type in ['css', 'js']:
+                                    # Text assets
+                                    try:
+                                        text_content = content.decode('utf-8', errors='ignore')
+                                        async with aiofiles.open(full_path, 'w', encoding='utf-8') as f:
+                                            await f.write(text_content)
+                                    except:
+                                        # If decode fails, save as binary
+                                        async with aiofiles.open(full_path, 'wb') as f:
+                                            await f.write(content)
+                                else:
+                                    # Binary assets
+                                    async with aiofiles.open(full_path, 'wb') as f:
+                                        await f.write(content)
+                                
+                                # Store mapping
+                                self.asset_map[url] = local_path
+                                logger.debug(f"Downloaded asset: {url} -> {local_path}")
+                                log_file.write(f"Downloaded asset: {url} -> {local_path}\n")
+                                
+                                return local_path
+                                
+                            elif response.status == 403:
+                                # Try alternative approach for 403
+                                logger.debug(f"403 for asset {url}, trying with different headers")
+                                log_file.write(f"403 for asset {url}, trying with different headers\n")
+                                
+                                # Try with minimal headers
+                                minimal_headers = {
+                                    'User-Agent': headers['User-Agent']
+                                }
+                                
+                                async with session.get(
+                                    clean_url,
+                                    timeout=30,
+                                    ssl=False,
+                                    headers=minimal_headers
+                                ) as retry_response:
+                                    if retry_response.status == 200:
+                                        content = await retry_response.read()
+                                        local_path = self.get_asset_local_path(clean_url, asset_type)
+                                        full_path = f"{self.output_dir}/{local_path}"
+                                        
+                                        os.makedirs(os.path.dirname(full_path), exist_ok=True)
+                                        async with aiofiles.open(full_path, 'wb') as f:
+                                            await f.write(content)
+                                        
+                                        self.asset_map[url] = local_path
+                                        return local_path
+                                    else:
+                                        logger.warning(f"Failed to download asset {url}: HTTP {retry_response.status}")
+                                        log_file.write(f"Failed to download asset {url}: HTTP {retry_response.status}\n")
+                                        self.failed_assets.add(url)
+                                        return None
+                            else:
+                                logger.warning(f"Failed to download asset {url}: HTTP {response.status}")
+                                log_file.write(f"Failed to download asset {url}: HTTP {response.status}\n")
+                                self.failed_assets.add(url)
+                                return None
+                                
+                    except asyncio.TimeoutError:
+                        logger.warning(f"Timeout downloading asset {url}")
+                        log_file.write(f"Timeout downloading asset {url}\n")
+                        self.failed_assets.add(url)
+                        return None
+                        
+            except Exception as e:
+                logger.error(f"Error downloading asset {url}: {e}")
+                log_file.write(f"Error downloading asset {url}: {e}\n")
+                self.failed_assets.add(url)
+                return None
     
     async def rewrite_html_urls(self, html: str, base_url: str, session: aiohttp.ClientSession) -> str:
         """Rewrite URLs in HTML to point to local assets"""
@@ -398,70 +405,78 @@ class WebScraper:
         return css_content
     
     async def fetch_page(self, session: aiohttp.ClientSession, url: str) -> Optional[Tuple[str, str, Dict]]:
-        """Fetch a single page and return content, content-type, and cookies"""
-        try:
-            # Check robots.txt
-            if self.robots_checker:
-                can_fetch = await self.robots_checker.can_fetch(url, 'WebArchiver/1.0')
-                if not can_fetch:
-                    logger.info(f"Robots.txt disallows: {url}")
-                    return None
-            
-            # Apply rate limiting
-            domain = urlparse(url).netloc
-            await self.apply_rate_limit(domain)
-            
-            # Get headers for page request
-            headers = self.get_headers()
-            
-            async with self.semaphore:
-                async with session.get(
-                    url, 
-                    timeout=30, 
-                    ssl=False,
-                    headers=headers,
-                    allow_redirects=True
-                ) as response:
-                    if response.status == 200:
-                        content = await response.text()
-                        content_type = response.headers.get('Content-Type', '')
-                        
-                        # Store cookies for this domain
-                        if response.cookies:
-                            self.domain_cookies[domain] = dict(response.cookies)
-                        
-                        return content, content_type, dict(response.cookies)
-                    else:
-                        logger.warning(f"HTTP {response.status} for {url}")
+        with open('web_archiver.log', 'a') as log_file:
+            """Fetch a single page and return content, content-type, and cookies"""
+            try:
+                # Check robots.txt
+                if self.robots_checker:
+                    can_fetch = await self.robots_checker.can_fetch(url, 'WebArchiver/1.0')
+                    if not can_fetch:
+                        logger.info(f"Robots.txt disallows: {url}")
+                        log_file.write(f"Robots.txt disallows: {url}\n")
                         return None
-                        
-        except asyncio.TimeoutError:
-            logger.warning(f"Timeout fetching {url}")
-            self.stats.add_failed()
-        except Exception as e:
-            logger.error(f"Error fetching {url}: {e}")
-            self.stats.add_failed()
-        return None
+                
+                # Apply rate limiting
+                domain = urlparse(url).netloc
+                await self.apply_rate_limit(domain)
+                
+                # Get headers for page request
+                headers = self.get_headers()
+                
+                async with self.semaphore:
+                    async with session.get(
+                        url, 
+                        timeout=30, 
+                        ssl=False,
+                        headers=headers,
+                        allow_redirects=True
+                    ) as response:
+                        if response.status == 200:
+                            content = await response.text()
+                            content_type = response.headers.get('Content-Type', '')
+                            
+                            # Store cookies for this domain
+                            if response.cookies:
+                                self.domain_cookies[domain] = dict(response.cookies)
+                            
+                            return content, content_type, dict(response.cookies)
+                        else:
+                            logger.warning(f"HTTP {response.status} for {url}")
+                            log_file.write(f"HTTP {response.status} for {url}\n")
+                            return None
+                            
+            except asyncio.TimeoutError:
+                logger.warning(f"Timeout fetching {url}")
+                log_file.write(f"Timeout fetching {url}\n")
+                self.stats.add_failed()
+            except Exception as e:
+                logger.error(f"Error fetching {url}: {e}")
+                log_file.write(f"Error fetching {url}: {e}\n")
+                self.stats.add_failed()
+            return None
     
     async def check_limits(self, url: str) -> bool:
-        """Check if we should continue scraping based on limits"""
-        async with self.stop_lock:
-            # Check global page limit
-            if self.pages_scraped_count >= self.max_pages:
-                if not self.should_stop:
-                    logger.info(f"Reached maximum page limit: {self.max_pages}")
-                    self.should_stop = True
-                return False
+        with open('web_archiver.log', 'a') as log_file:
+            """Check if we should continue scraping based on limits"""
+            async with self.stop_lock:
+                # Check global page limit
+                if self.pages_scraped_count >= self.max_pages:
+                    if not self.should_stop:
+                        logger.info(f"Reached maximum page limit: {self.max_pages}")
+                        log_file.write(f"Reached maximum page limit: {self.max_pages}\n")
+                        self.should_stop = True
+                    return False
 
-            # Check per-domain limit
-            domain = urlparse(url).netloc
-            domain_count = self.domain_counts.get(domain, 0)
+                # Check per-domain limit
+                domain = urlparse(url).netloc
+                domain_count = self.domain_counts.get(domain, 0)
 
-            if domain_count >= self.pages_per_domain:
-                logger.warning(f"Reached limit for domain {domain}: {self.pages_per_domain} pages")
-                return False
+                if domain_count >= self.pages_per_domain:
+                    logger.warning(f"Reached limit for domain {domain}: {self.pages_per_domain} pages")
+                    log_file.write(f"Reached limit for domain {domain}: {self.pages_per_domain} pages\n")
+                    return False
 
-            return True
+                return True
     
     async def apply_rate_limit(self, domain: str):
         """Apply rate limiting per domain"""
@@ -475,23 +490,24 @@ class WebScraper:
             self.last_request_time[domain] = time.time()
     
     def extract_urls(self, html: str, base_url: str) -> Set[str]:
-        """Extract all URLs from HTML"""
-        urls = set()
-        try:
-            soup = BeautifulSoup(html, 'lxml')
-            
-            # Extract from links
-            for tag in soup.find_all(['a', 'area']):
-                url = tag.get('href')
-                if url:
-                    absolute_url = urljoin(base_url, url)
-                    if URLFilter.should_scrape(absolute_url, self.base_domain):
-                        urls.add(absolute_url)
-                        
-        except Exception as e:
-            logger.error(f"Error extracting URLs: {e}")
-            
-        return urls
+        with open('web_archiver.log', 'a') as log_file:
+            """Extract all URLs from HTML"""
+            urls = set()
+            try:
+                soup = BeautifulSoup(html, 'lxml')
+                
+                # Extract from links
+                for tag in soup.find_all(['a', 'area']):
+                    url = tag.get('href')
+                    if url:
+                        absolute_url = urljoin(base_url, url)
+                        if URLFilter.should_scrape(absolute_url, self.base_domain):
+                            urls.add(absolute_url)
+                            
+            except Exception as e:
+                logger.error(f"Error extracting URLs: {e}")
+                
+            return urls
     
     async def save_page_content(self, url: str, content: str, content_type: str) -> Optional[str]:
         """Save page content to disk"""
@@ -516,7 +532,9 @@ class WebScraper:
             return filepath
             
         except Exception as e:
-            logger.error(f"Error saving content for {url}: {e}")
+            with open('web_archiver.log', 'a') as log_file:
+                logger.error(f"Error saving content for {url}: {e}")
+                log_file.write(f"Error saving content for {url}: {e}\n")
             return None
     
     async def process_url(self, session: aiohttp.ClientSession, url: str, depth: int):
@@ -596,6 +614,8 @@ class WebScraper:
                     
                 await self.process_url(session, url, depth)
                 pbar.update(1)
+                with open('web_archiver.log', 'a') as log_file:
+                    log_file.write(f"#{self.pages_scraped_count}; {self.max_pages}; {len(self.asset_map)} \n")
                 pbar.set_description(f"Pages: {self.pages_scraped_count}/{self.max_pages}, Assets: {len(self.asset_map)}")
                 self.queue.task_done()
                 
@@ -603,106 +623,125 @@ class WebScraper:
                 if self.queue.empty():
                     break
             except Exception as e:
-                logger.error(f"Worker error: {e}")
+                with open('web_archiver.log', 'a') as log_file:
+                    logger.error(f"Worker error: {e}")
+                    log_file.write(f"Worker error: {e}\n")
     
     async def run(self):
-        """Run the scraper"""
-        logger.info(f"Starting scraper for {self.start_url}")
-        logger.info(f"Limits: max_pages={self.max_pages}, pages_per_domain={self.pages_per_domain}")
-        logger.info(f"Settings: max_depth={self.max_depth}, workers={self.max_workers}")
-        
-        # Initialize session with cookie jar
-        timeout = aiohttp.ClientTimeout(total=60)
-        connector = aiohttp.TCPConnector(
-            limit=100, 
-            limit_per_host=30,
-            force_close=True
-        )
-        
-        # Use cookie jar for session
-        jar = aiohttp.CookieJar()
-        
-        async with aiohttp.ClientSession(
-            timeout=timeout, 
-            connector=connector,
-            cookie_jar=jar
-        ) as session:
+        with open('web_archiver.log', 'a') as log_file:
+            """Run the scraper"""
+            logger.info(f"Starting scraper for {self.start_url}")
+            log_file.write(f"Starting scraper for {self.start_url}\n")
+            logger.info(f"Limits: max_pages={self.max_pages}, pages_per_domain={self.pages_per_domain}")
+            log_file.write(f"Limits: max_pages={self.max_pages}, pages_per_domain={self.pages_per_domain}\n")
+            logger.info(f"Settings: max_depth={self.max_depth}, workers={self.max_workers}")
+            log_file.write(f"Settings: max_depth={self.max_depth}, workers={self.max_workers}\n")
             
-            # Add start URL to queue
-            await self.queue.put((self.start_url, 0))
+            # Initialize session with cookie jar
+            timeout = aiohttp.ClientTimeout(total=60)
+            connector = aiohttp.TCPConnector(
+                limit=100, 
+                limit_per_host=30,
+                force_close=True
+            )
             
-            # Create progress bar
-            with tqdm(
-                desc=f"Scraping (0/{self.max_pages})", 
-                unit="pages",
-                total=self.max_pages
-            ) as pbar:
-                # Start workers
-                workers = [
-                    asyncio.create_task(self.worker(session, pbar))
-                    for _ in range(self.max_workers)
-                ]
+            # Use cookie jar for session
+            jar = aiohttp.CookieJar()
+            
+            async with aiohttp.ClientSession(
+                timeout=timeout, 
+                connector=connector,
+                cookie_jar=jar
+            ) as session:
                 
-                # Monitoring task to check for completion
-                async def monitor():
-                    while not self.should_stop:
-                        await asyncio.sleep(0.5)
+                # Add start URL to queue
+                await self.queue.put((self.start_url, 0))
+                
+                # Create progress bar
+                with tqdm(
+                    desc=f"Scraping (0/{self.max_pages})", 
+                    unit="pages",
+                    total=self.max_pages
+                ) as pbar:
+                    # Start workers
+                    workers = [
+                        asyncio.create_task(self.worker(session, pbar))
+                        for _ in range(self.max_workers)
+                    ]
+                    
+                    # Monitoring task to check for completion
+                    async def monitor():
+                        while not self.should_stop:
+                            await asyncio.sleep(0.5)
 
-                    # Once stop is signaled, empty the queue
-                    while not self.queue.empty():
-                        self.queue.get_nowait()
-                        self.queue.task_done()
+                        # Once stop is signaled, empty the queue
+                        while not self.queue.empty():
+                            self.queue.get_nowait()
+                            self.queue.task_done()
 
-                monitor_task = asyncio.create_task(monitor())
-                
-                # Wait for all initial tasks to complete
-                await self.queue.join()
-                self.should_stop = True # Ensure stop is signaled
-                
-                # Cancel monitor and workers
-                monitor_task.cancel()
-                for worker in workers:
-                    worker.cancel()
-                
-                await asyncio.gather(*workers, return_exceptions=True)
-        
-        # Get final stats
-        final_stats = self.stats.get_stats()
-        
-        # Save metadata
-        metadata_path = f"{self.output_dir}/metadata.json"
-        save_json({
-            'start_url': self.start_url,
-            'total_pages': len(self.scraped_data),
-            'pages_scraped': self.pages_scraped_count,
-            'max_pages_limit': self.max_pages,
-            'pages_per_domain_limit': self.pages_per_domain,
-            'timestamp': datetime.now().isoformat(),
-            'stats': final_stats,
-            'domain_counts': self.domain_counts,
-            'pages': self.scraped_data,
-            'asset_map': self.asset_map,
-            'failed_assets': list(self.failed_assets)
-        }, metadata_path)
-        
-        # Log summary
-        logger.info("=" * 60)
-        logger.info("Scraping Summary:")
-        logger.info(f"  Pages scraped: {self.pages_scraped_count}/{self.max_pages}")
-        logger.info(f"  Assets downloaded: {len(self.asset_map)}")
-        logger.info(f"  Failed assets: {len(self.failed_assets)}")
-        logger.info(f"  Pages failed: {final_stats['pages_failed']}")
-        logger.info(f"  Data downloaded: {final_stats['bytes_downloaded']:,} bytes")
-        logger.info(f"  Time elapsed: {final_stats['elapsed_seconds']:.2f} seconds")
-        logger.info(f"  Pages/second: {final_stats['pages_per_second']:.2f}")
-        logger.info(f"  Domains scraped: {final_stats['total_domains']}")
-        
-        if self.domain_counts:
-            logger.info("\nTop domains:")
-            for domain, count in sorted(self.domain_counts.items(), 
-                                       key=lambda x: x[1], reverse=True)[:5]:
-                logger.info(f"    {domain}: {count} pages")
-        
-        logger.info("=" * 60)
-        
-        return self.scraped_data
+                    monitor_task = asyncio.create_task(monitor())
+                    
+                    # Wait for all initial tasks to complete
+                    await self.queue.join()
+                    self.should_stop = True # Ensure stop is signaled
+                    
+                    # Cancel monitor and workers
+                    monitor_task.cancel()
+                    for worker in workers:
+                        worker.cancel()
+                    
+                    await asyncio.gather(*workers, return_exceptions=True)
+            
+            # Get final stats
+            final_stats = self.stats.get_stats()
+            
+            # Save metadata
+            metadata_path = f"{self.output_dir}/metadata.json"
+            save_json({
+                'start_url': self.start_url,
+                'total_pages': len(self.scraped_data),
+                'pages_scraped': self.pages_scraped_count,
+                'max_pages_limit': self.max_pages,
+                'pages_per_domain_limit': self.pages_per_domain,
+                'timestamp': datetime.now().isoformat(),
+                'stats': final_stats,
+                'domain_counts': self.domain_counts,
+                'pages': self.scraped_data,
+                'asset_map': self.asset_map,
+                'failed_assets': list(self.failed_assets)
+            }, metadata_path)
+            
+            # Log summary
+            logger.info("=" * 60)
+            log_file.write("=" * 60 + "\n")
+            logger.info("Scraping Summary:")
+            log_file.write("Scraping Summary:\n")
+            logger.info(f"  Pages scraped: {self.pages_scraped_count}/{self.max_pages}")
+            log_file.write(f"  Pages scraped: {self.pages_scraped_count}/{self.max_pages}\n")
+            logger.info(f"  Assets downloaded: {len(self.asset_map)}")
+            log_file.write(f"  Assets downloaded: {len(self.asset_map)}\n")
+            logger.info(f"  Failed assets: {len(self.failed_assets)}")
+            log_file.write(f"  Failed assets: {len(self.failed_assets)}\n")
+            logger.info(f"  Pages failed: {final_stats['pages_failed']}")
+            log_file.write(f"  Pages failed: {final_stats['pages_failed']}\n")
+            logger.info(f"  Data downloaded: {final_stats['bytes_downloaded']:,} bytes")
+            log_file.write(f"  Data downloaded: {final_stats['bytes_downloaded']:,} bytes\n")
+            logger.info(f"  Time elapsed: {final_stats['elapsed_seconds']:.2f} seconds")
+            log_file.write(f"  Time elapsed: {final_stats['elapsed_seconds']:.2f} seconds\n")
+            logger.info(f"  Pages/second: {final_stats['pages_per_second']:.2f}")
+            log_file.write(f"  Pages/second: {final_stats['pages_per_second']:.2f}\n")
+            logger.info(f"  Domains scraped: {final_stats['total_domains']}")
+            log_file.write(f"  Domains scraped: {final_stats['total_domains']}\n")
+            
+            if self.domain_counts:
+                logger.info("\nTop domains:")
+                log_file.write("\nTop domains:\n")
+                for domain, count in sorted(self.domain_counts.items(), 
+                                        key=lambda x: x[1], reverse=True)[:5]:
+                    logger.info(f"    {domain}: {count} pages")
+                    log_file.write(f"    {domain}: {count} pages\n")
+            
+            logger.info("=" * 60)
+            log_file.write("=" * 60 + "\n")
+            
+            return self.scraped_data
