@@ -193,7 +193,7 @@ class WebArchiveServer:
             
             # Start the scraping process
             self.active_scrape = await asyncio.create_subprocess_exec(
-                'python', 'main.py',
+                'python', 'main.py', '--non-interactive',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
