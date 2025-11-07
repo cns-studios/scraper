@@ -26,6 +26,7 @@ class WebArchiveServer:
         self.archives_dir = Path(archives_dir)
         self.app = web.Application()
         self.active_scrape = None
+        self.scraped_data_dir.mkdir(exist_ok=True)
         self.setup_routes()
         
     def setup_routes(self):
@@ -52,7 +53,8 @@ class WebArchiveServer:
         self.app.router.add_get('/', self.serve_index)
 
         # Static files
-        self.app.router.add_static('/', path='public', name='static')
+        self.app.router.add_static('/public', path='public', name='public')
+        self.app.router.add_static('/scraped_data', path=self.scraped_data_dir, name='scraped_data')
 
     async def serve_index(self, request):
         """Serve the index.html file."""
@@ -127,7 +129,7 @@ class WebArchiveServer:
                 # Set base tag for relative URLs to work
                 if '<head>' in content:
                     # Insert base tag to help with asset loading
-                    base_path = f"/static/{run_id}/"
+                    base_path = f"/scraped_data/{run_id}/"
                     base_tag = f'<base href="{base_path}">'
                     content = content.replace('<head>', f'<head>{base_tag}')
                 
@@ -193,7 +195,7 @@ class WebArchiveServer:
             
             # Start the scraping process
             self.active_scrape = await asyncio.create_subprocess_exec(
-                'python', 'main.py',
+                'python', 'main.py', '--non-interactive',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )

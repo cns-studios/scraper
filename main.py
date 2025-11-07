@@ -6,6 +6,7 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import logging
+import argparse
 from dotenv import load_dotenv
 from scraper import WebScraper
 from compressor import WebCompressor
@@ -28,7 +29,7 @@ logger = logging.getLogger(__name__)
 with open('web_archiver.log', 'w') as log_file:
     log_file.write("")
 
-async def scrape_and_compress():
+async def scrape_and_compress(non_interactive=False):
     with open('web_archiver.log', 'a') as log_file:
         """Main workflow: scrape and compress"""
         
@@ -129,11 +130,12 @@ async def scrape_and_compress():
             if len(scraped_data) >= max_pages * 0.9:  # If we hit near the limit
                 logger.info(f"\n⚠️  Page limit reached ({len(scraped_data)}/{max_pages})")
                 log_file.write(f"\n⚠️  Page limit reached ({len(scraped_data)}/{max_pages})\n")
-                user_input = input("Continue with compression? (y/n): ").lower()
-                if user_input != 'y':
-                    logger.info("Compression skipped by user")
-                    log_file.write("Compression skipped by user\n")
-                    return
+                if not non_interactive:
+                    user_input = input("Continue with compression? (y/n): ").lower()
+                    if user_input != 'y':
+                        logger.info("Compression skipped by user")
+                        log_file.write("Compression skipped by user\n")
+                        return
             
             # Phase 2: Compression
             logger.info("\n🗜️ PHASE 2: Optimization & Compression")
@@ -199,6 +201,14 @@ async def scrape_and_compress():
 
 def main():
     """Entry point"""
+    parser = argparse.ArgumentParser(description="Web Archiver")
+    parser.add_argument(
+        '--non-interactive',
+        action='store_true',
+        help="Run in non-interactive mode, skipping user prompts"
+    )
+    args = parser.parse_args()
+
     try:
         # Check Python version
         if sys.version_info < (3, 7):
@@ -206,7 +216,7 @@ def main():
             sys.exit(1)
         
         # Run the async workflow
-        asyncio.run(scrape_and_compress())
+        asyncio.run(scrape_and_compress(non_interactive=args.non_interactive))
         
     except Exception as e:
         logger.error(f"Fatal error: {e}")
