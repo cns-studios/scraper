@@ -561,13 +561,12 @@ class WebScraper:
         content, content_type, cookies = result
         
         # Update counters
+        domain = urlparse(url).netloc
         async with self.stop_lock:
             self.pages_scraped_count += 1
+            self.domain_counts[domain] = self.domain_counts.get(domain, 0) + 1
             if self.pages_scraped_count >= self.max_pages:
                 self.should_stop = True
-
-        domain = urlparse(url).netloc
-        self.domain_counts[domain] = self.domain_counts.get(domain, 0) + 1
         
         # Store cookies for this domain
         if cookies:
@@ -600,10 +599,13 @@ class WebScraper:
         
         # Extract and queue new URLs if HTML
         if 'html' in content_type and not self.should_stop:
-            new_urls = self.extract_urls(content, url)
-            for new_url in new_urls:
-                if new_url not in self.visited_urls and not self.should_stop:
-                    await self.queue.put((new_url, depth + 1))
+            # Check domain limit before adding more URLs from the same domain
+            domain = urlparse(url).netloc
+            if self.domain_counts.get(domain, 0) < self.pages_per_domain:
+                new_urls = self.extract_urls(content, url)
+                for new_url in new_urls:
+                    if new_url not in self.visited_urls and not self.should_stop:
+                        await self.queue.put((new_url, depth + 1))
     
     async def worker(self, session: aiohttp.ClientSession, pbar: tqdm):
         """Worker to process URLs from queue"""
