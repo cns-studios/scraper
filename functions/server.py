@@ -14,6 +14,7 @@ from aiohttp import web
 import aiofiles
 import subprocess
 from dotenv import load_dotenv, set_key
+from mangum import Mangum
 import database
 
 # Configure logging
@@ -60,49 +61,6 @@ class WebArchiveServer:
     async def serve_index(self, request):
         """Serve the index.html file."""
         return web.FileResponse('public/index.html')
-        
-    async def global_search(self, request):
-        """Search across all runs"""
-        query = request.query.get('q', '').lower()
-        limit = int(request.query.get('limit', 100))
-        
-        if not query:
-            return web.json_response({'results': []})
-        
-        results = []
-        
-        if self.scraped_data_dir.exists():
-            for run_dir in self.scraped_data_dir.iterdir():
-                if run_dir.is_dir() and run_dir.name.replace('_', '').isdigit():
-                    metadata_file = run_dir / 'metadata.json'
-                    if metadata_file.exists():
-                        with open(metadata_file, 'r') as f:
-                            metadata = json.load(f)
-                        
-                        # Search in pages
-                        for url, page_data in metadata.get('pages', {}).items():
-                            if query in url.lower() or query in page_data.get('domain', '').lower():
-                                results.append({
-                                    'run_id': run_dir.name,
-                                    'url': url,
-                                    'hash': self.get_url_hash(url),
-                                    'domain': page_data.get('domain', ''),
-                                    'timestamp': page_data.get('timestamp', ''),
-                                    'content_type': page_data.get('content_type', ''),
-                                    'size': page_data.get('size', 0)
-                                })
-                                
-                                if len(results) >= limit:
-                                    break
-                
-                if len(results) >= limit:
-                    break
-        
-        return web.json_response({
-            'results': results[:limit],
-            'total': len(results),
-            'query': query
-        })
     
     async def preview_page(self, request):
         """Preview page as rendered HTML"""
@@ -177,86 +135,9 @@ class WebArchiveServer:
     
     async def start_scrape(self, request):
         """Start a new scraping job"""
-        if self.active_scrape:
-            return web.json_response({
-                'error': 'A scrape is already in progress'
-            }, status=400)
-        
-        try:
-            data = await request.json()
-            
-            # Update .env file with new configuration
-            env_file = '.env'
-            for key, value in data.items():
-                if key in ['START_URL', 'MAX_WORKERS', 'MAX_DEPTH', 'MAX_PAGES', 
-                          'PAGES_PER_DOMAIN', 'IMAGE_QUALITY', 'MAX_IMAGE_WIDTH',
-                          'COMPRESSION_LEVEL', 'SKIP_ASSETS', 'RESPECT_ROBOTS_TXT', 
-                          'REQUEST_DELAY']:
-                    set_key(env_file, key, str(value))
-            
-            # Start the scraping process
-            self.active_scrape = await asyncio.create_subprocess_exec(
-                'python', 'main.py', '--non-interactive',
-                stdout=asyncio.subprocess.PIPE,
-                stderr=asyncio.subprocess.PIPE
-            )
-            # Start monitoring task
-            asyncio.create_task(self.monitor_scrape())
-            
-            return web.json_response({
-                'status': 'started',
-                'pid': self.active_scrape.pid
-            })
-            
-        except Exception as e:
-            logger.error(f"Error starting scrape: {e}")
-            return web.json_response({
-                'error': str(e)
-            }, status=500)
+        logger.info("Scrape request received. In a microservices architecture, this would trigger the scraping service.")
+        return web.json_response({'status': 'accepted'}, status=202)
     
-    async def monitor_scrape(self):
-        """Monitor active scrape process"""
-        if self.active_scrape:
-            await self.active_scrape.wait()
-            self.active_scrape = None
-            logger.info("Scraping process completed")
-    
-    async def get_scrape_status(self, request):
-        """Get current scrape status"""
-        if self.active_scrape:
-            # Try to read the latest log
-            log_content = []
-            try:
-                with open('web_archiver.log', 'r') as f:
-                    # Get last 50 lines
-                    log_content = f.readlines()[-50:]
-            except:
-                pass
-            
-            return web.json_response({
-                'status': 'running',
-                'pid': self.active_scrape.pid,
-                'log': log_content
-            })
-        
-        return web.json_response({
-            'status': 'idle'
-        })
-    
-    async def stop_scrape(self, request):
-        """Stop active scrape"""
-        if self.active_scrape:
-            self.active_scrape.terminate()
-            await self.active_scrape.wait()
-            self.active_scrape = None
-            
-            return web.json_response({
-                'status': 'stopped'
-            })
-        
-        return web.json_response({
-            'error': 'No active scrape'
-        }, status=400)
     
     async def get_scrape_config(self, request):
         """Get current scraping configuration"""
@@ -402,26 +283,6 @@ class WebArchiveServer:
         """Generate hash for URL"""
         import hashlib
         return hashlib.md5(url.encode()).hexdigest()
-    
-    async def start(self):
-        """Start the server"""
-        runner = web.AppRunner(self.app)
-        await runner.setup()
-        site = web.TCPSite(runner, 'localhost', self.port)
-        await site.start()
-        
-        logger.info(f"Server started at http://localhost:{self.port}")
-        logger.info("Press Ctrl+C to stop")
-        
-        # Keep the server running
-        try:
-            await asyncio.Event().wait()
-        except KeyboardInterrupt:
-            logger.info("Server stopped")
 
-async def main():
-    server = WebArchiveServer()
-    await server.start()
-
-if __name__ == '__main__':
-    asyncio.run(main())
+server = WebArchiveServer()
+handler = Mangum(server.app)

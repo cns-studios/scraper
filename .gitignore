@@ -6,3 +6,4 @@ web_archiver.log
 node_modules
 logs
 server.log
+.env
