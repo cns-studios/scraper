@@ -6,10 +6,12 @@ import sys
 from datetime import datetime
 from pathlib import Path
 import logging
+import argparse
 from dotenv import load_dotenv
 from scraper import WebScraper
 from compressor import WebCompressor
 from utils import ensure_directories, save_json
+import database
 
 # Load environment variables
 load_dotenv()
@@ -28,7 +30,7 @@ logger = logging.getLogger(__name__)
 with open('web_archiver.log', 'w') as log_file:
     log_file.write("")
 
-async def scrape_and_compress():
+async def scrape_and_compress(non_interactive=False):
     with open('web_archiver.log', 'a') as log_file:
         """Main workflow: scrape and compress"""
         
@@ -84,6 +86,12 @@ async def scrape_and_compress():
         ensure_directories(run_output_dir, archive_dir)
         
         try:
+            # Create a new run in the database
+            run_id = database.create_run(start_url=start_url)
+            if not run_id:
+                logger.error("Failed to create a new run in the database. Aborting.")
+                return
+
             # Phase 1: Scraping
             logger.info("\n📥 PHASE 1: Web Scraping")
             logger.info("-" * 40)
@@ -92,6 +100,7 @@ async def scrape_and_compress():
             
             scraper = WebScraper(
                 start_url=start_url,
+                run_id=run_id,
                 output_dir=run_output_dir,
                 max_workers=max_workers,
                 max_depth=max_depth,
@@ -109,31 +118,19 @@ async def scrape_and_compress():
                 log_file.write("No data scraped. Exiting.\n")
                 return
             
-            # Save URLs to JSON
-            urls_file = f"{run_output_dir}/scraped_urls.json"
-            save_json({
-                'start_url': start_url,
-                'timestamp': timestamp,
-                'total_urls': len(scraped_data),
-                'max_pages_limit': max_pages,
-                'pages_per_domain_limit': pages_per_domain,
-                'urls': list(scraped_data.keys())
-            }, urls_file)
-            
             logger.info(f"✅ Scraping complete. {len(scraped_data)} pages saved")
             log_file.write(f"✅ Scraping complete. {len(scraped_data)} pages saved\n")
-            logger.info(f"📄 URLs saved to: {urls_file}")
-            log_file.write(f"📄 URLs saved to: {urls_file}\n")
             
             # Ask user if they want to continue with compression
             if len(scraped_data) >= max_pages * 0.9:  # If we hit near the limit
                 logger.info(f"\n⚠️  Page limit reached ({len(scraped_data)}/{max_pages})")
                 log_file.write(f"\n⚠️  Page limit reached ({len(scraped_data)}/{max_pages})\n")
-                user_input = input("Continue with compression? (y/n): ").lower()
-                if user_input != 'y':
-                    logger.info("Compression skipped by user")
-                    log_file.write("Compression skipped by user\n")
-                    return
+                if not non_interactive:
+                    user_input = input("Continue with compression? (y/n): ").lower()
+                    if user_input != 'y':
+                        logger.info("Compression skipped by user")
+                        log_file.write("Compression skipped by user\n")
+                        return
             
             # Phase 2: Compression
             logger.info("\n🗜️ PHASE 2: Optimization & Compression")
@@ -170,25 +167,6 @@ async def scrape_and_compress():
             log_file.write(f"📊 Compression Ratio: {compression_report['compression_ratio']}\n")
             log_file.write("=" * 60 + "\n")
             
-            # Final summary
-            summary = {
-                'run_timestamp': timestamp,
-                'start_url': start_url,
-                'pages_scraped': len(scraped_data),
-                'max_pages_limit': max_pages,
-                'reached_limit': len(scraped_data) >= max_pages,
-                'urls_file': urls_file,
-                'archive_path': compression_report['archive_path'],
-                'compression_ratio': compression_report['compression_ratio'],
-                'optimization_savings': compression_report['optimization_stats']['total_saved']
-            }
-            
-            summary_file = f"{archive_dir}/run_summary_{timestamp}.json"
-            save_json(summary, summary_file)
-            
-            logger.info(f"\n📋 Summary saved to: {summary_file}")
-            log_file.write(f"\n📋 Summary saved to: {summary_file}\n")
-            
         except KeyboardInterrupt:
             logger.info("\n⚠️ Process interrupted by user")
             log_file.write("\n⚠️ Process interrupted by user\n")
@@ -199,6 +177,14 @@ async def scrape_and_compress():
 
 def main():
     """Entry point"""
+    parser = argparse.ArgumentParser(description="Web Archiver")
+    parser.add_argument(
+        '--non-interactive',
+        action='store_true',
+        help="Run in non-interactive mode, skipping user prompts"
+    )
+    args = parser.parse_args()
+
     try:
         # Check Python version
         if sys.version_info < (3, 7):
@@ -206,7 +192,7 @@ def main():
             sys.exit(1)
         
         # Run the async workflow
-        asyncio.run(scrape_and_compress())
+        asyncio.run(scrape_and_compress(non_interactive=args.non_interactive))
         
     except Exception as e:
         logger.error(f"Fatal error: {e}")

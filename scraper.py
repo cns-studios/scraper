@@ -13,12 +13,14 @@ import logging
 from utils import URLFilter, RobotsChecker, ScraperStats, save_json, ensure_directories
 import hashlib
 import random
+import database
 
 logger = logging.getLogger(__name__)
 
 class WebScraper:
     def __init__(self, 
-                 start_url: str, 
+                 start_url: str,
+                 run_id: int,
                  output_dir: str, 
                  max_workers: int = 10, 
                  max_depth: int = 3,
@@ -29,6 +31,7 @@ class WebScraper:
                  skip_assets: bool = False):
         
         self.start_url = start_url
+        self.run_id = run_id
         self.base_domain = f"{urlparse(start_url).scheme}://{urlparse(start_url).netloc}"
         self.output_dir = output_dir
         self.max_workers = max_workers
@@ -40,7 +43,6 @@ class WebScraper:
         self.skip_assets = skip_assets
         
         self.visited_urls: Set[str] = set()
-        self.scraped_data: Dict[str, dict] = {}
         self.asset_map: Dict[str, str] = {}  # Map original URLs to local paths
         self.failed_assets: Set[str] = set()  # Track failed assets to avoid retrying
         self.queue = asyncio.Queue()
@@ -582,16 +584,16 @@ class WebScraper:
         # Save content
         filepath = await self.save_page_content(url, content, content_type)
         
-        # Store metadata
-        self.scraped_data[url] = {
-            'url': url,
-            'timestamp': datetime.now().isoformat(),
-            'content_type': content_type,
-            'filepath': filepath,
-            'depth': depth,
-            'size': len(content),
-            'domain': domain
-        }
+        # Store metadata in the database
+        database.insert_page(
+            run_id=self.run_id,
+            url=url,
+            content_type=content_type,
+            filepath=filepath,
+            depth=depth,
+            size=len(content),
+            domain=domain
+        )
         
         # Log progress
         logger.info(f"Progress: {self.pages_scraped_count}/{self.max_pages} pages scraped, {len(self.asset_map)} assets downloaded")
@@ -695,21 +697,8 @@ class WebScraper:
             # Get final stats
             final_stats = self.stats.get_stats()
             
-            # Save metadata
-            metadata_path = f"{self.output_dir}/metadata.json"
-            save_json({
-                'start_url': self.start_url,
-                'total_pages': len(self.scraped_data),
-                'pages_scraped': self.pages_scraped_count,
-                'max_pages_limit': self.max_pages,
-                'pages_per_domain_limit': self.pages_per_domain,
-                'timestamp': datetime.now().isoformat(),
-                'stats': final_stats,
-                'domain_counts': self.domain_counts,
-                'pages': self.scraped_data,
-                'asset_map': self.asset_map,
-                'failed_assets': list(self.failed_assets)
-            }, metadata_path)
+            # Update run in the database
+            database.update_run(self.run_id, final_stats, self.domain_counts)
             
             # Log summary
             logger.info("=" * 60)

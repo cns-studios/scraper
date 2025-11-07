@@ -14,6 +14,7 @@ from aiohttp import web
 import aiofiles
 import subprocess
 from dotenv import load_dotenv, set_key
+import database
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,6 +27,7 @@ class WebArchiveServer:
         self.archives_dir = Path(archives_dir)
         self.app = web.Application()
         self.active_scrape = None
+        self.scraped_data_dir.mkdir(exist_ok=True)
         self.setup_routes()
         
     def setup_routes(self):
@@ -52,7 +54,8 @@ class WebArchiveServer:
         self.app.router.add_get('/', self.serve_index)
 
         # Static files
-        self.app.router.add_static('/', path='public', name='static')
+        self.app.router.add_static('/public', path='public', name='public')
+        self.app.router.add_static('/scraped_data', path=self.scraped_data_dir, name='scraped_data')
 
     async def serve_index(self, request):
         """Serve the index.html file."""
@@ -127,7 +130,7 @@ class WebArchiveServer:
                 # Set base tag for relative URLs to work
                 if '<head>' in content:
                     # Insert base tag to help with asset loading
-                    base_path = f"/static/{run_id}/"
+                    base_path = f"/scraped_data/{run_id}/"
                     base_tag = f'<base href="{base_path}">'
                     content = content.replace('<head>', f'<head>{base_tag}')
                 
@@ -193,7 +196,7 @@ class WebArchiveServer:
             
             # Start the scraping process
             self.active_scrape = await asyncio.create_subprocess_exec(
-                'python', 'main.py',
+                'python', 'main.py', '--non-interactive',
                 stdout=asyncio.subprocess.PIPE,
                 stderr=asyncio.subprocess.PIPE
             )
@@ -277,41 +280,15 @@ class WebArchiveServer:
     
     async def get_runs(self, request):
         """Get all scraping runs"""
-        runs = []
-        
-        if self.scraped_data_dir.exists():
-            for run_dir in sorted(self.scraped_data_dir.iterdir(), reverse=True):
-                if run_dir.is_dir() and run_dir.name.replace('_', '').isdigit():
-                    metadata_file = run_dir / 'metadata.json'
-                    if metadata_file.exists():
-                        with open(metadata_file, 'r') as f:
-                            metadata = json.load(f)
-                            
-                        runs.append({
-                            'id': run_dir.name,
-                            'timestamp': metadata.get('timestamp', run_dir.name),
-                            'start_url': metadata.get('start_url', ''),
-                            'total_pages': metadata.get('total_pages', 0),
-                            'pages_scraped': metadata.get('pages_scraped', 0),
-                            'stats': metadata.get('stats', {})
-                        })
-        
+        runs = database.get_runs_from_db()
         return web.json_response(runs)
     
     async def get_run_details(self, request):
         """Get details for a specific run"""
         run_id = request.match_info['run_id']
-        run_dir = self.scraped_data_dir / run_id
-        
-        if not run_dir.exists():
+        run = database.get_run_details_from_db(run_id)
+        if not run:
             return web.json_response({'error': 'Run not found'}, status=404)
-        
-        metadata_file = run_dir / 'metadata.json'
-        if not metadata_file.exists():
-            return web.json_response({'error': 'Metadata not found'}, status=404)
-        
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
         
         # Check for compression report
         compression_report = None
@@ -324,14 +301,13 @@ class WebArchiveServer:
         
         return web.json_response({
             'id': run_id,
-            'metadata': metadata,
+            'metadata': run,
             'compression_report': compression_report
         })
     
     async def get_run_pages(self, request):
         """Get all pages for a specific run"""
         run_id = request.match_info['run_id']
-        run_dir = self.scraped_data_dir / run_id
         
         # Pagination parameters
         page = int(request.query.get('page', 1))
@@ -339,42 +315,13 @@ class WebArchiveServer:
         search = request.query.get('search', '').lower()
         domain_filter = request.query.get('domain', '')
         
-        metadata_file = run_dir / 'metadata.json'
-        if not metadata_file.exists():
-            return web.json_response({'error': 'Metadata not found'}, status=404)
+        pages, total = database.get_run_pages_from_db(run_id, page, per_page, search, domain_filter)
         
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
-        
-        # Get pages and apply filters
-        pages = metadata.get('pages', {})
-        filtered_pages = []
-        
-        for url, page_data in pages.items():
-            # Apply search filter
-            if search and search not in url.lower() and search not in page_data.get('domain', '').lower():
-                continue
-            
-            # Apply domain filter
-            if domain_filter and page_data.get('domain', '') != domain_filter:
-                continue
-                
-            filtered_pages.append({
-                'url': url,
-                'hash': self.get_url_hash(url),
-                **page_data
-            })
-        
-        # Sort by timestamp
-        filtered_pages.sort(key=lambda x: x.get('timestamp', ''), reverse=True)
-        
-        # Pagination
-        total = len(filtered_pages)
-        start = (page - 1) * per_page
-        end = start + per_page
-        
+        for page_data in pages:
+            page_data['hash'] = self.get_url_hash(page_data['url'])
+
         return web.json_response({
-            'pages': filtered_pages[start:end],
+            'pages': pages,
             'pagination': {
                 'page': page,
                 'per_page': per_page,
@@ -409,30 +356,23 @@ class WebArchiveServer:
     async def get_run_stats(self, request):
         """Get statistics for a specific run"""
         run_id = request.match_info['run_id']
-        run_dir = self.scraped_data_dir / run_id
+        run = database.get_run_details_from_db(run_id)
+        if not run:
+            return web.json_response({'error': 'Run not found'}, status=404)
+
+        stats = run.get('stats', {})
+        domain_counts = run.get('domain_counts', {})
         
-        metadata_file = run_dir / 'metadata.json'
-        if not metadata_file.exists():
-            return web.json_response({'error': 'Metadata not found'}, status=404)
+        pages, _ = database.get_run_pages_from_db(run_id, per_page=10000) # Get all pages
         
-        with open(metadata_file, 'r') as f:
-            metadata = json.load(f)
-        
-        stats = metadata.get('stats', {})
-        domain_counts = metadata.get('domain_counts', {})
-        
-        # Calculate additional stats
-        pages = metadata.get('pages', {})
         content_types = {}
         depths = {}
         
-        for page_data in pages.values():
-            # Content type distribution
+        for page_data in pages:
             ct = page_data.get('content_type', 'unknown')
             ct_simple = ct.split(';')[0].strip()
             content_types[ct_simple] = content_types.get(ct_simple, 0) + 1
             
-            # Depth distribution
             depth = page_data.get('depth', 0)
             depths[str(depth)] = depths.get(str(depth), 0) + 1
         
